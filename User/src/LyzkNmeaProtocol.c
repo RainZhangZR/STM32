@@ -4,6 +4,13 @@
 #include "string.h"
 #include "stdlib.h"
 #include "stdio.h"
+#include "stdarg.h"
+#include "ctype.h"
+
+#define NMEA_TOKS_COMPARE   (1)
+#define NMEA_TOKS_PERCENT   (2)
+#define NMEA_TOKS_WIDTH     (3)
+#define NMEA_TOKS_TYPE      (4)
 
 uint32_t LyzkStrToHex (char* str)
 {
@@ -83,8 +90,44 @@ ErrorStatus LyzkNmeaCheckSum (const char* strMsg)
     return eResult;
 }
 
-int LyzkNmeaScanf (const char* strMsg, int iMsgSize, const char* strFmt, ...)
+int LyzkNmeaScanf (const char* strMsg, const int iMsgSize, const char* strFmt, ...)
 {
+    const char* pchMsgEnd   = strMsg + iMsgSize;
+    int iParaCnt            = 0;        /* Parameters that converted */
+    char strMsgTmp [20]     = {0};
+    char strFmtTmp [10]     = {0};
+    int i;
+    void* pParam;
+    
+    /* Declare a variable that will be refer to each argument in turn.      *
+     * Type va_list is defined in "stdarg.h" file.                          */
+    va_list argList;
+    
+    /* Find the beginning character '$' */
+    while ('$' != *strMsg)
+    {
+        strMsg++;
+    }    
+    
+    /* Macro va_start initializes "argList" to point to the first unnamed   *
+     * argument. It must be called once before "argList" is used.           */
+    va_start (argList, strFmt);
+
+    i = 0;
+    while (*strFmt && (strMsg < pchMsgEnd))
+    {
+        if ('%' != *strFmt)
+        {
+            strMsg++;
+            strFmt++;
+        }
+    }
+    
+    /* va_end does whatever clearup is necessary. It must be called before  *
+     * the program returns.                                                 */
+    va_end (argList);
+    
+    return iParaCnt;
 }
 
 ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, LyzkNmeaRmcInfo* pstInfo)

@@ -40,14 +40,20 @@ main.c(10): warning:  #550-D: variable "eResult" was set but never used
 main.c: 1 warning, 0 errors
 compiling LyzkUsart.c...
 compiling LyzkNmeaProtocol.c...
-User\src\LyzkNmeaProtocol.c(88): warning:  #940-D: missing return statement at end of non-void function "LyzkNmeaScanf"
-  }
-User\src\LyzkNmeaProtocol.c: 1 warning, 0 errors
+User\src\LyzkNmeaProtocol.c(92): warning:  #177-D: variable "strMsgTmp" was declared but never referenced
+      char strMsgTmp [20]     = {0};
+User\src\LyzkNmeaProtocol.c(93): warning:  #177-D: variable "strFmtTmp" was declared but never referenced
+      char strFmtTmp [10]     = {0};
+User\src\LyzkNmeaProtocol.c(94): warning:  #550-D: variable "i" was set but never used
+      int i;
+User\src\LyzkNmeaProtocol.c(95): warning:  #177-D: variable "pParam" was declared but never referenced
+      void* pParam;
+User\src\LyzkNmeaProtocol.c: 4 warnings, 0 errors
 compiling LyzkTime.c...
 linking...
 Program Size: Code=16358 RO-data=1002 RW-data=20 ZI-data=1636  
 FromELF: creating hex file...
-".\Objects\STM32_C_project.axf" - 0 Error(s), 2 Warning(s).
+".\Objects\STM32_C_project.axf" - 0 Error(s), 5 Warning(s).
 
 <h2>Collection of Component include folders:</h2>
   D:\GitHub\STM32\RTE

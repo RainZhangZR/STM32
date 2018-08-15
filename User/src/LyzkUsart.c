@@ -234,13 +234,13 @@ int LyzkUsartFprint (USART_TypeDef* pUSARTx, char* strFmt, ...)
 
     /* Declare a variable that will be refer to each argument in turn.      *
      * Type va_list is defined in "stdarg.h" file.                          */
-    va_list vaList;
+    va_list argList;
     
     /* Macro va_start initializes "varList" to point to the first unnamed   *
      * argument. It must be called once before "varList" is used.           */
-    va_start (vaList, strFmt);
+    va_start (argList, strFmt);
     
-    iCnt = vsnprintf (strRslt, MAX_BUFFER_SIZE, strFmt, vaList);
+    iCnt = vsnprintf (strRslt, MAX_BUFFER_SIZE, strFmt, argList);
     
     for (i = 0; i < iCnt; i++)
     {
@@ -249,7 +249,7 @@ int LyzkUsartFprint (USART_TypeDef* pUSARTx, char* strFmt, ...)
  
     /* va_end does whatever clearup is necessary. It must be called before  *
      * the program returns.                                                 */
-    va_end (vaList);
+    va_end (argList);
     
     /* Wait until all the characters of the converted string have been sent */
     while (USART_GetFlagStatus (pUSARTx, USART_FLAG_TC) == RESET);

@@ -7,6 +7,8 @@
 #include "stdarg.h"
 #include "ctype.h"
 
+#define NMEA_MAX_TEMP_STRING_LENGTH 50
+
 #define NMEA_TOKS_COMPARE   (1)
 #define NMEA_TOKS_PERCENT   (2)
 #define NMEA_TOKS_WIDTH     (3)
@@ -93,49 +95,204 @@ ErrorStatus LyzkNmeaCheckSum (const char* strMsg)
 int LyzkNmeaScanf (const char* strMsg, const int iMsgSize, const char* strFmt, ...)
 {
     const char* pchMsgEnd   = strMsg + iMsgSize;
-    int iParaCnt            = 0;        /* Parameters that converted */
-    char strMsgTmp [20]     = {0};
-    char strFmtTmp [10]     = {0};
+    int iArgCnt             = 0;        /* Arguments that converted */
+    char strMsgTmp [NMEA_MAX_TEMP_STRING_LENGTH]     = {0};
+    char strFmtTmp [NMEA_MAX_TEMP_STRING_LENGTH]     = {0};
     int i;
-    void* pParam;
+    int iWidth;
+    void* pArgu;
+    int iTokType            = NMEA_TOKS_COMPARE;
     
     /* Declare a variable that will be refer to each argument in turn.      *
      * Type va_list is defined in "stdarg.h" file.                          */
     va_list argList;
     
     /* Find the beginning character '$' */
-    while ('$' != *strMsg)
+    while (('$' != *strMsg) && (*strMsg) && (strMsg < pchMsgEnd))
     {
         strMsg++;
-    }    
+    }
+    
+    /* Cannot find the '$' character in strMsg or the first character of    *
+     * strFmt is not '$'. That is, the first character of strMsg and strFmt *
+     * must be '$', align strMsg and strFmt.                                */
+    if (('$' != *strMsg) || ('$' != *strFmt))
+    {
+        goto FAIL;
+    }
     
     /* Macro va_start initializes "argList" to point to the first unnamed   *
      * argument. It must be called once before "argList" is used.           */
     va_start (argList, strFmt);
 
-    i = 0;
-    while (*strFmt && (strMsg < pchMsgEnd))
+    strMsg++;
+    strFmt++;
+    while (*strFmt)
     {
-        if ('%' != *strFmt)
+        switch (iTokType)
         {
-            strMsg++;
-            strFmt++;
+        case NMEA_TOKS_COMPARE:
+            if ('%' == *strFmt)
+            {
+                iTokType = NMEA_TOKS_PERCENT;
+            }
+            else if (*strFmt != *strMsg)
+            {
+                goto FAIL;
+            }
+            else
+            {
+                strMsg++;
+            }            
+            break;
+            
+        case NMEA_TOKS_PERCENT:
+            iWidth          = 0;
+            i               = 0;            
+            iTokType        = NMEA_TOKS_WIDTH;
+        case NMEA_TOKS_WIDTH:
+            if (isdigit (*strFmt))
+            {
+                strFmtTmp [i] = *strFmt;
+                i++;
+                break;
+            }
+            
+            iTokType        = NMEA_TOKS_TYPE;
+            
+            /* Read part of string to convert */
+            strFmtTmp [i]   = '\0';
+            
+            /* The number of character to read is specified */
+            if (i > 0)
+            {
+                iWidth = atoi (strFmtTmp);
+                
+                /* Read part of strMsg, the number of characters to read    *
+                 * was specified by iWidth.                                 */
+                memcpy (strMsgTmp, strMsg, iWidth);                
+                strMsgTmp [iWidth] = '\0';
+                strMsg += iWidth;
+            }
+            /* The number of characters to read is not specified */
+            else
+            {
+                /* Read part of strMsg before the ',' character. */
+                i = 0;
+                while ((',' != *strMsg) && (strMsg < pchMsgEnd))
+                {
+                    strMsgTmp [i] = *strMsg;
+                    strMsg++;
+                    i++;
+                }
+                strMsgTmp [i] = '\0';
+            }
+        case NMEA_TOKS_TYPE:
+            switch (*strFmt)
+            {
+            case 'c':
+            case 'C':
+                pArgu = (void*) va_arg (argList, char*);
+                if (strlen (strMsgTmp))
+                {
+                    *((char*) pArgu) = strMsgTmp [0];
+                }
+                else
+                {
+                    *((char*) pArgu) = '\0';
+                }
+                iArgCnt++;
+                break;
+            
+            case 's':
+            case 'S':
+                pArgu = (void*) va_arg (argList, char*);
+                if (0 != (iWidth = strlen (strMsgTmp)))
+                {
+                    memcpy (pArgu, strMsgTmp, iWidth + 1);
+                }
+                else
+                {
+                    *((char*) pArgu) = '\0';
+                }
+                iArgCnt++;
+                break;
+            
+            case 'd':
+            case 'i':
+                pArgu = (void*) va_arg (argList, int*);
+                if (strlen (strMsgTmp))
+                {
+                    *((int*) pArgu) = atoi (strMsgTmp);
+                }
+                else
+                {
+                    *((int*) pArgu) = 0;
+                }
+                iArgCnt++;
+                break;
+            
+            case 'u':
+            case 'o':
+            case 'x':
+            case 'X':
+                pArgu = (void*) va_arg (argList, uint32_t*);
+                if (strlen (strMsgTmp))
+                {
+                    *((uint32_t*) pArgu) = atoi (strMsgTmp);
+                }
+                else
+                {
+                    *((uint32_t*) pArgu) = 0;
+                }
+                iArgCnt++;
+                break;
+            
+            case 'f':
+            case 'F':
+            case 'e':
+            case 'E':
+            case 'g':
+            case 'G':
+                pArgu = (void*) va_arg (argList, double*);
+                if (strlen (strMsgTmp))
+                {
+                    *((double*) pArgu) = atof (strMsgTmp);
+                }
+                else
+                {
+                    *((double*) pArgu) = 0.0;
+                }
+                iArgCnt++;
+                break;
+            
+            default:
+                goto FAIL;
+            }
+            
+            iTokType = NMEA_TOKS_COMPARE;
+            break;
         }
+        
+        strFmt++;
     }
-    
+
+FAIL:
     /* va_end does whatever clearup is necessary. It must be called before  *
      * the program returns.                                                 */
     va_end (argList);
     
-    return iParaCnt;
+    return iArgCnt;
 }
 
-ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, LyzkNmeaRmcInfo* pstInfo)
+ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, 
+                                            const int iMsgSize, 
+                                            LyzkNmeaRmcInfo* pstInfo)
 {
-    char chEorW;        /* East or West */
-    char chEorWMagn;    /* East or West of magnetic variation */
-    char chNorS;        /* North or South */
-    char pchMsgId [6];  /* Message ID */
+    char chEorW;                /* East or West */
+    char chEorWMagn;            /* East or West of magnetic variation */
+    char chNorS;                /* North or South */
+    char achMsgId [6] = {0};    /* Message ID */
     int  iDegree;
     double dMinute;
     
@@ -148,52 +305,52 @@ ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, LyzkNmeaRmcInfo*
         {
             strMsg++;
         }
-        /* ------------------------------------- RMC Sentence format -------------------------------------- */
-        /*                         $                                                                        *
-         *                         |Message Id                                                              *
-         *                         |  |  Hour                                                               *
-         *                         |  |    | Minute                                                         *
-         *                         |  |    |   |Second                                                      *
-         *                         |  |    |   |   | MilliSecond                                            *
-         *                         |  |    |   |   |    |Data Valid                                         *
-         *                         |  |    |   |   |    |  |Latitude                                        *
-         *                         |  |    |   |   |    |  |   | NorS                                       *
-         *                         |  |    |   |   |    |  |   |  |Longitude                                *
-         *                         |  |    |   |   |    |  |   |  |   | EorW                                *
-         *                         |  |    |   |   |    |  |   |  |   |  | Speed                            *
-         *                         |  |    |   |   |    |  |   |  |   |  |   | Course over ground           *
-         *                         |  |    |   |   |    |  |   |  |   |  |   |   |   Day                    *
-         *                         |  |    |   |   |    |  |   |  |   |  |   |   |    | Month               *
-         *                         |  |    |   |   |    |  |   |  |   |  |   |   |    |   | Year            *
-         *                         |  |    |   |   |    |  |   |  |   |  |   |   |    |   |   |Magn Vari    *
-         *                         |  |    |   |   |    |  |   |  |   |  |   |   |    |   |   |   | EorW    *
-         *                         |  |    |   |   |    |  |   |  |   |  |   |   |    |   |   |   |  |PMode *
-         *                         |  |    |   |   |    |  |   |  |   |  |   |   |    |   |   |   |  |  |   */
-        if (17 != sscanf (strMsg, "$%5s,%02d%02d%02d.%03d,%c,%lf,%c,%lf,%c,%lf,%lf,%02d%02d%02d,%lf,%c,%c*",
-                                  pchMsgId, 
-                                  &(pstInfo->m_stUtcTime.m_iHour), 
-                                  &(pstInfo->m_stUtcTime.m_iMinute),
-                                  &(pstInfo->m_stUtcTime.m_iSecond), 
-                                  &(pstInfo->m_stUtcTime.m_iMilliSecond),
-                                  &(pstInfo->m_chStatus),
-                                  &(pstInfo->m_dLatitude),
-                                  &chNorS,
-                                  &(pstInfo->m_dLongitude),
-                                  &chEorW,
-                                  &(pstInfo->m_dSpeed),
-                                  &(pstInfo->m_dCourse),
-                                  &(pstInfo->m_stUtcDate.m_iDay),
-                                  &(pstInfo->m_stUtcDate.m_iMonth),
-                                  &(pstInfo->m_stUtcDate.m_iYear),
-                                  &(pstInfo->m_dMagnVariation),
-                                  &chEorWMagn,
-                                  &(pstInfo->m_chMode)))
+        /* --------------------------------------- RMC Sentence format ---------------------------------------- */
+        /*                                          $                                                           *
+         *                                          |Message Id                                                 *
+         *                                          |  | Hour                                                   *
+         *                                          |  |   |Minute                                              *
+         *                                          |  |   |  |Second                                           *
+         *                                          |  |   |  |  | MilliSecond                                  *
+         *                                          |  |   |  |  |   |Data Valid                                *
+         *                                          |  |   |  |  |   |  |Latitude                               *
+         *                                          |  |   |  |  |   |  |  | NorS                               *
+         *                                          |  |   |  |  |   |  |  |  |Longitude                        *
+         *                                          |  |   |  |  |   |  |  |  |  | EorW                         *
+         *                                          |  |   |  |  |   |  |  |  |  |  |Speed                      *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |Course over ground      *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  Day                *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |Month            *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |Year          *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |Magn Vari  *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  | EorW   *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  |  |PMode*
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  |  |  |  */
+        if (18 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%2d%2d%2d.%3d,%c,%f,%c,%f,%c,%f,%f,%2d%2d%2d,%f,%c,%c*",
+                                                   achMsgId, 
+                                                   &(pstInfo->m_stUtcTime.m_iHour), 
+                                                   &(pstInfo->m_stUtcTime.m_iMinute),
+                                                   &(pstInfo->m_stUtcTime.m_iSecond), 
+                                                   &(pstInfo->m_stUtcTime.m_iMilliSecond),
+                                                   &(pstInfo->m_chStatus),
+                                                   &(pstInfo->m_dLatitude),
+                                                   &chNorS,
+                                                   &(pstInfo->m_dLongitude),
+                                                   &chEorW,
+                                                   &(pstInfo->m_dSpeed),
+                                                   &(pstInfo->m_dCourse),
+                                                   &(pstInfo->m_stUtcDate.m_iDay),
+                                                   &(pstInfo->m_stUtcDate.m_iMonth),
+                                                   &(pstInfo->m_stUtcDate.m_iYear),
+                                                   &(pstInfo->m_dMagnVariation),
+                                                   &chEorWMagn,
+                                                   &(pstInfo->m_chMode)))
         {
             eResult = ERROR;
         }
         else
         {
-            if (pchMsgId[2] != 'R' || pchMsgId[3] != 'M' || pchMsgId[4] != 'C')
+            if (achMsgId[2] != 'R' || achMsgId[3] != 'M' || achMsgId[4] != 'C')
             {
                 eResult = ERROR;
             }
@@ -253,505 +410,386 @@ ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, LyzkNmeaRmcInfo*
     return eResult;
 }
 
-ErrorStatus LyzkGetInfoFromVtgSentence (char* strMsg, double* pdCourse, double* pdCourseMagn,
-										double* pdSpeedInKnots, double* pdSpeedInKmPerHour,
-										char* pchMode)
+ErrorStatus LyzkGetInfoFromNmeaVtgSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaVtgInfo* pstInfo)
 {
-	char strTmp [11] = {0};
-	int i;
-	
+    char achMsgId [6] = {0};    /* Message ID */
+    
 	ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
-	
-	if (eResult == SUCCESS)
-	{
-		/* Find the header of '$' */
-        while (*strMsg != '$')
+    
+    if (SUCCESS == eResult)
+    {
+        /* Find the header of '$' */
+        while ('$' != *strMsg)
         {
             strMsg++;
         }
         
-        /* Whether is VTG sentence */
-        if (*strMsg == '$' && *(strMsg + 3) == 'V' && *(strMsg + 4) == 'T'
-         && *(strMsg + 5) == 'G')
-        {
-            strMsg += 7;
-			/* Course over ground (T) in degree */
-			i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;
-			
-			*pdCourse = atof (strTmp);
-			
-			/* 'T' */
-			strMsg++;
-			i = 0;
-			while (*strMsg != ',')
-			{
-				strTmp [i] = *strMsg;
-				i++;
-				strMsg++;
-			}
-			
-			if (strTmp [0] != 'T')
-			{
-				eResult = ERROR;
-				return eResult;
-			}
-			
-			/* Course over ground (magnetic) in degree */
-			strMsg++;
-			i = 0;
-			while (*strMsg != ',')
-			{
-				strTmp [i] = *strMsg;
-				i++;
-				strMsg++;
-			}
-			strTmp [i] = 0;
-			
-			*pdCourseMagn = atof (strTmp);
-			
-			/* 'M' */
-			strMsg++;
-			i = 0;
-			while (*strMsg != ',')
-			{
-				strTmp [i] = *strMsg;
-				i++;
-				strMsg++;
-			}
-			
-			if (strTmp [0] != 'M')
-			{
-				eResult = ERROR;
-				return eResult;
-			}
-			
-			/* Speed over ground in knots */
-			strMsg++;
-			i = 0;
-			while (*strMsg != ',')
-			{
-				strTmp [i] = *strMsg;
-				i++;
-				strMsg++;
-			}
-			strTmp [i] = 0;
-			
-			*pdSpeedInKnots = atof (strTmp);
-			
-			/* 'N' */
-			strMsg++;
-			i = 0;
-			while (*strMsg != ',')
-			{
-				strTmp [i] = *strMsg;
-				i++;
-				strMsg++;
-			}
-			
-			if (strTmp [0] != 'N')
-			{
-				eResult = ERROR;
-				return eResult;
-			}
-			
-			/* Speed over ground in km/h */
-			strMsg++;
-			i = 0;
-			while (*strMsg != ',')
-			{
-				strTmp [i] = *strMsg;
-				i++;
-				strMsg++;
-			}
-			strTmp [i] = 0;
-			
-			*pdSpeedInKmPerHour = atof (strTmp);
-			
-			/* 'K' */
-			strMsg++;
-			i = 0;
-			while (*strMsg != ',')
-			{
-				strTmp [i] = *strMsg;
-				i++;
-				strMsg++;
-			}
-			
-			if (strTmp [0] != 'K')
-			{
-				eResult = ERROR;
-				return eResult;
-			}
-			
-			/* Position Mode, 'N' - No fix, 'A' - Autonomous GNSS fix,  *
-             * 'D' - Differential GNSS fix                              */
-            strMsg++;
-            *pchMode = *strMsg;
-		}
-        else
+        /* ----------------------------- VTG Sentence Format ------------------------------ */
+        /*                                         $                                        *
+         *                                         |MsgID                                   *
+         *                                         |  |COS(T)                               *
+         *                                         |  |  |  COS(M)                          *
+         *                                         |  |  |    |SpeedInKnots                 *
+         *                                         |  |  |    |    |SpeedInKm/h             *
+         *                                         |  |  |    |    |    |Positioning Mode   *
+         *                                         |  |  |    |    |    |    |              */
+        if (6 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%f,T,%f,M,%f,N,%f,K,%c*",
+                                                  achMsgId,
+                                                  &(pstInfo->m_dCourseTrue),
+                                                  &(pstInfo->m_dCourseMagn),
+                                                  &(pstInfo->m_dSpeedInKnots),
+                                                  &(pstInfo->m_dSpeedInKmPerHour),
+                                                  &(pstInfo->m_chMode)))
         {
             eResult = ERROR;
         }
-	}
+        else
+        {
+            if (achMsgId [2] != 'V' || achMsgId [3] != 'T' || achMsgId [4] != 'G')
+            {
+                eResult = ERROR;
+            }
+        }
+    }
 	
 	return eResult;
 }
 
-ErrorStatus LyzkGetInfoFromGgaSentence (char* strMsg, LyzkTime* pstTime,
-                                        double* pdLatitude, double* pdLongitude,
-                                        char* pchMode, int* piNumOfSatellitesUsed, 
-                                        double* pdHdop, double* pdAltitude, 
-                                        double* pdGeoidSeparation, int* piAgeOfDgps,
-                                        int* piStationIdOfDgps)
+ErrorStatus LyzkGetInfoFromNmeaGgaSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGgaInfo* pstInfo)
 {
-    char strTmp [11] = {0};
-    int i;
+    char chEorW;                /* East or West */
+    char chNorS;                /* North or South */
+    char achMsgId [6] = {0};    /* Message ID */
+    int  iDegree;
+    double dMinute;
     
-    /* Decide whether the check sum is correct. */
     ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
     
-    if (eResult == SUCCESS)
+    if (SUCCESS == eResult)
     {
         /* Find the header of '$' */
-        while (*strMsg != '$')
+        while ('$' != *strMsg)
         {
             strMsg++;
         }
         
-        /* Whether is GGA sentence */
-        if (*strMsg == '$' && *(strMsg + 3) == 'G' && *(strMsg + 4) == 'G'
-         && *(strMsg + 5) == 'A')
+        /* --------------------------------------- GGA Sentence Format ---------------------------------------- */
+        /*                                          $                                                           *
+         *                                          |MsgId                                                      *
+         *                                          |  | Hour                                                   *
+         *                                          |  |   |Minute                                              *
+         *                                          |  |   |  |Second                                           *
+         *                                          |  |   |  |  |MilliSecond                                   *
+         *                                          |  |   |  |  |   |Latitude                                  *
+         *                                          |  |   |  |  |   |  |NorS                                   *
+         *                                          |  |   |  |  |   |  |  |Longitude                           *
+         *                                          |  |   |  |  |   |  |  |  |EorW                             *
+         *                                          |  |   |  |  |   |  |  |  |  |FixStatus                     *
+         *                                          |  |   |  |  |   |  |  |  |  |  |NumOfSV                    *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |HDOP                    *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |Altitude             *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |GeoidSeparation   *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |    | DGPS Age    *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |    |    |DGPS Station ID *
+         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |    |    |  |     */
+        if (16 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%2d%2d%2d.%3d,%f,%c,%f,%c,%d,%d,%f,%f,M,%f,M,%f,%d*",
+                                                   achMsgId,
+                                                   &(pstInfo->m_stUtcTime.m_iHour),
+                                                   &(pstInfo->m_stUtcTime.m_iMinute),
+                                                   &(pstInfo->m_stUtcTime.m_iSecond),
+                                                   &(pstInfo->m_stUtcTime.m_iMilliSecond),
+                                                   &(pstInfo->m_dLatitude),
+                                                   &chNorS,
+                                                   &(pstInfo->m_dLongitude),
+                                                   &chEorW,
+                                                   &(pstInfo->m_iSig),
+                                                   &(pstInfo->m_iNumOfSateUsed),
+                                                   &(pstInfo->m_dHdop),
+                                                   &(pstInfo->m_dAltitude),
+                                                   &(pstInfo->m_dGeoSeparation),
+                                                   &(pstInfo->m_dDgpsAge),
+                                                   &(pstInfo->m_iDgpsStationId)))
         {
-            strMsg += 7;
-            /* UTC Time, the format is "hhmmss.sss" */
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            pstTime->m_iHour    = (strTmp [0] - '0') * 10 + (strTmp [1] - '0');
-            pstTime->m_iMinute  = (strTmp [2] - '0') * 10 + (strTmp [3] - '0');
-            pstTime->m_iSecond  = (strTmp [4] - '0') * 10 + (strTmp [5] - '0');
-            pstTime->m_iMilliSecond   = (strTmp [7] - '0') * 100
-                                      + (strTmp [8] - '0') * 10
-                                      + (strTmp [9] - '0');
-            
-            /* Latitude, the format is "ddmm.mmmm" */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;
-            
-            *pdLatitude = atof (strTmp) / 100.0;
-            
-            /* Which hemisphere, 'N' - North (+), 'S' - South (-)  */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            if (strTmp [0] == 'S')
-            {
-                *pdLatitude = - *pdLatitude;
-            }
-            
-            /* Longitude, the format is "dddmm.mmmm" */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;
-            
-            *pdLongitude = atof (strTmp) / 100.0;
-            
-            /* East or west of longitude, 'E' - East (+), 'W' - West (-) */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            if (strTmp [0] == 'W')
-            {
-                *pdLongitude = - *pdLongitude;
-            }
-            
-            /* Fix status, '0' - Invalid, '1' - GNSS fix, '2' - DPGS fix,   *
-             * '6' - Estimated (dead reckoning) mode*/
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            *pchMode = strTmp [0];
-            
-            /* Number of satellites being used (0~24) */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;            
-            
-            *piNumOfSatellitesUsed = atoi (strTmp);
-            
-            /* Horizontal dilution of precision */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;
-            
-            *pdHdop = atof (strTmp);
-            
-            /* Altitude in meters acrossing to WGS84 ellipsoid */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;
-            *pdAltitude = atof (strTmp);
-            
-            /* 'M' */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            if (strTmp [0] != 'M')
-            {
-                eResult = ERROR;
-                return eResult;
-            }
-            
-            /* Height of Geoid (means sea level) abover WGS84 ellipsoid, meter */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                strMsg++;
-                i++;
-            }
-            strTmp [i] = 0;
-            
-            *pdGeoidSeparation = atof (strTmp);
-            
-            /* 'M' */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            if (strTmp [0] != 'M')
-            {
-                eResult = ERROR;
-                return eResult;
-            }
-            
-            /* Age of DGPS data in seconds, empty if DGPS is not used */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                strMsg++;
-                i++;
-            }
-            strTmp [i] = 0;
-            
-            *piAgeOfDgps = atoi (strTmp);
-            
-            /* DGPS station ID, empty if DGPS is not used */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                strMsg++;
-                i++;
-            }
-            strTmp [i] = 0;
-            
-            *piStationIdOfDgps = atoi (strTmp);
+            eResult = ERROR;
         }
         else
         {
-            eResult = ERROR;
+            if (achMsgId [2] != 'G' || achMsgId [3] != 'G' || achMsgId [4] != 'A')
+            {
+                eResult = ERROR;
+            }
+            else
+            {
+                /* Original Latitude format is "ddmm.mmmm", then translate it *
+                 * to value in degree.                                        */
+                iDegree = (int) (pstInfo->m_dLatitude) / 100;
+                dMinute = pstInfo->m_dLatitude - iDegree * 100;
+                pstInfo->m_dLatitude = (double) iDegree + dMinute / 60.0;
+                
+                /* If chNorS == 'S', Latitude is negative.                      */                
+                if (chNorS == 'S')
+                {
+                    pstInfo->m_dLatitude = - pstInfo->m_dLatitude;
+                }
+                /* If chNorS == 'N', Latitude is positive. Or error occurred.   */
+                else if (chNorS != 'N')
+                {
+                    eResult = ERROR;
+                    return eResult;
+                }
+                
+                /* Original Longitude format is "dddmm.mmmm", then translate it *
+                 * to value in degree.                                          */
+                iDegree = (int) (pstInfo->m_dLongitude) / 100;
+                dMinute = pstInfo->m_dLongitude - iDegree * 100;
+                pstInfo->m_dLongitude = (double) iDegree + dMinute / 60.0;
+                
+                /* If chEorW == 'W', Longitude is negative.                     */
+                if (chEorW == 'W')
+                {
+                    pstInfo->m_dLongitude = - pstInfo->m_dLongitude;
+                }
+                /* If chEorW == 'E', Longitude is positive. Or error occurred.  */
+                else if (chEorW != 'E')
+                {
+                    eResult = ERROR;
+                    return eResult;
+                }
+            }
         }
     }
     
     return eResult;
 }
 
-ErrorStatus LyzkGetInfoFromGllSentence (char* strMsg, LyzkTime* pstTime,
-                                        double* pdLatitude, double* pdLongitude,
-                                        char* pchMode)
+ErrorStatus LyzkGetInfoFromNmeaGsaSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGsaInfo* pstInfo)
 {
-    char strTmp [11] = {0};
-    int i;
+    char achMsgId [6] = {0};    /* Message ID */
     
-    /* Decide whether the check sum is correct. */
     ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
     
-    if (eResult == SUCCESS)
+    if (SUCCESS == eResult)
     {
         /* Find the header of '$' */
-        while (*strMsg != '$')
+        while ('$' != *strMsg)
         {
             strMsg++;
         }
         
-        /* Whether is GLL sentence */
-        if (*strMsg == '$' && *(strMsg + 3) == 'G' && *(strMsg + 4) == 'L'
-         && *(strMsg + 5) == 'L')
+        /* ------------------------------------- GSA Sentence Format -------------------------------------- */
+        /*                                          $                                                       *
+         *                                          |MsgId                                                  *
+         *                                          |  |Mode                                                *
+         *                                          |  |  |Fix Statuse                                      *
+         *                                          |  |  |  |SatInCh1                                      *
+         *                                          |  |  |  |  |SatInCh2                                   *
+         *                                          |  |  |  |  |  |SatInCh3                                *
+         *                                          |  |  |  |  |  |  |SatInCh4                             *
+         *                                          |  |  |  |  |  |  |  |SatInCh5                          *
+         *                                          |  |  |  |  |  |  |  |  |SatInCh6                       *
+         *                                          |  |  |  |  |  |  |  |  |  |SatInCh7                    *
+         *                                          |  |  |  |  |  |  |  |  |  |  |SatInCh8                 *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |SatInCh9              *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh10          *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh11       *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh12    *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |PDOP      *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |HDOP   *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | VDOP *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | */
+        if (18 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%c,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f*",
+                                                   achMsgId,
+                                                   &(pstInfo->m_chFixMode),
+                                                   &(pstInfo->m_iFixType),
+                                                   &(pstInfo->m_aiStaUsed [0]),
+                                                   &(pstInfo->m_aiStaUsed [1]),
+                                                   &(pstInfo->m_aiStaUsed [2]),
+                                                   &(pstInfo->m_aiStaUsed [3]),
+                                                   &(pstInfo->m_aiStaUsed [4]),
+                                                   &(pstInfo->m_aiStaUsed [5]),
+                                                   &(pstInfo->m_aiStaUsed [6]),
+                                                   &(pstInfo->m_aiStaUsed [7]),
+                                                   &(pstInfo->m_aiStaUsed [8]),
+                                                   &(pstInfo->m_aiStaUsed [9]),
+                                                   &(pstInfo->m_aiStaUsed [10]),
+                                                   &(pstInfo->m_aiStaUsed [11]),
+                                                   &(pstInfo->m_dPdop),
+                                                   &(pstInfo->m_dHdop),
+                                                   &(pstInfo->m_dVdop)))
         {
-            strMsg += 7;
-            /* Latitude, the format is "ddmm.mmmm" */
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;
-            
-            *pdLatitude = atof (strTmp) / 100.0;
-            
-            /* Which hemisphere, 'N' - North (+), 'S' - South (-)  */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            if (strTmp [0] == 'S')
-            {
-                *pdLatitude = - *pdLatitude;
-            }
-            
-            /* Longitude, the format is "dddmm.mmmm" */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            strTmp [i] = 0;
-            
-            *pdLongitude = atof (strTmp) / 100.0;
-            
-            /* East or west of longitude, 'E' - East (+), 'W' - West (-) */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            if (strTmp [0] == 'W')
-            {
-                *pdLongitude = - *pdLongitude;
-            }
-            
-            /* UTC Time, the format is "hhmmss.sss" */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            pstTime->m_iHour    = (strTmp [0] - '0') * 10 + (strTmp [1] - '0');
-            pstTime->m_iMinute  = (strTmp [2] - '0') * 10 + (strTmp [3] - '0');
-            pstTime->m_iSecond  = (strTmp [4] - '0') * 10 + (strTmp [5] - '0');
-            pstTime->m_iMilliSecond   = (strTmp [7] - '0') * 100
-                                      + (strTmp [8] - '0') * 10
-                                      + (strTmp [9] - '0');
-            
-            /* Data valid */
-            strMsg++;
-            i = 0;
-            while (*strMsg != ',')
-            {
-                strTmp [i] = *strMsg;
-                i++;
-                strMsg++;
-            }
-            
-            if (strTmp [0] != 'A')
-            {
-                eResult = ERROR;
-                return eResult;
-            }
-            
-            /* Positioning mode, 'N' - No fix, 'A' - Autonomous GNSS fix,   *
-             * 'D' - Differential GNSS fix.                                 */
-            strMsg++;
-            *pchMode = *strMsg;
+            eResult = ERROR;
         }
         else
         {
+            if ('G' != achMsgId [2] || 'S' != achMsgId [3] || 'A' != achMsgId [4])
+            {
+                eResult = ERROR;
+            }
+        }
+    }
+    
+    return eResult;
+}
+
+ErrorStatus LyzkGetInfoFromNmeaGsvSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGsvInfo* pstInfo)
+{
+    char achMsgId [6] = {0};    /* Message ID */
+    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+    
+    if (SUCCESS == eResult)
+    {
+        /* Find the header of '$' */
+        while ('$' != *strMsg)
+        {
+            strMsg++;
+        }
+        
+        /* ----------------------------------------- GSV Sentence Format ------------------------------------------ */
+        /*                                          $                                                               *
+         *                                          |MsgId                                                          *
+         *                                          |  |Msgs                                                        *
+         *                                          |  |  | SN                                                      *
+         *                                          |  |  |  |SatInView                                             *
+         *                                          |  |  |  |  |SatId1                                             *
+         *                                          |  |  |  |  |  |Elev1                                           *
+         *                                          |  |  |  |  |  |  |Azi1                                         *
+         *                                          |  |  |  |  |  |  |  |SNR1                                      *
+         *                                          |  |  |  |  |  |  |  |  |SatId2                                 *
+         *                                          |  |  |  |  |  |  |  |  |  |Elev2                               *
+         *                                          |  |  |  |  |  |  |  |  |  |  |Azi2                             *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |SNR2                          *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |SatId3                     *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |Elev3                   *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Azi3                 *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SNR3              *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SatId4         *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Elev4       *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Azi4     *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SNR4  *
+         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |   */
+        if (20 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%d,%d,%d,%d,%f,%f,%f,%d,%f,%f,%f,%d,%f,%f,%f,%d,%f,%f,%f*",
+                                                   achMsgId,
+                                                   &(pstInfo->m_iNumOfMsg),
+                                                   &(pstInfo->m_iSeqNum),
+                                                   &(pstInfo->m_iSatInView),
+                                                   &(pstInfo->m_stSatInfo [0].m_iId),
+                                                   &(pstInfo->m_stSatInfo [0].m_dElevation),
+                                                   &(pstInfo->m_stSatInfo [0].m_dAzimuth),
+                                                   &(pstInfo->m_stSatInfo [0].m_dSnr),
+                                                   &(pstInfo->m_stSatInfo [1].m_iId),
+                                                   &(pstInfo->m_stSatInfo [1].m_dElevation),
+                                                   &(pstInfo->m_stSatInfo [1].m_dAzimuth),
+                                                   &(pstInfo->m_stSatInfo [1].m_dSnr),
+                                                   &(pstInfo->m_stSatInfo [2].m_iId),
+                                                   &(pstInfo->m_stSatInfo [2].m_dElevation),
+                                                   &(pstInfo->m_stSatInfo [2].m_dAzimuth),
+                                                   &(pstInfo->m_stSatInfo [2].m_dSnr),
+                                                   &(pstInfo->m_stSatInfo [3].m_iId),
+                                                   &(pstInfo->m_stSatInfo [3].m_dElevation),
+                                                   &(pstInfo->m_stSatInfo [3].m_dAzimuth),
+                                                   &(pstInfo->m_stSatInfo [3].m_dSnr)))
+        {
             eResult = ERROR;
+        }
+        else
+        {
+            if ('G' != achMsgId [2] || 'S' != achMsgId [3] || 'V' != achMsgId [4])
+            {
+                eResult = ERROR;
+            }
+        }        
+    }
+    
+    return eResult;
+}
+
+ErrorStatus LyzkGetInfoFromNmeaGllSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGllInfo* pstInfo)
+{
+    char chEorW;
+    char chNorS;
+    char achMsgId [6] = {0};    /* Message ID */
+    int iDegree;
+    double dMinute;
+    
+    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+    
+    if (SUCCESS == eResult)
+    {
+        /* Find the header of '$' */
+        while ('$' != *strMsg)
+        {
+            strMsg++;
+        }
+        
+        if (11 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%f,%c,%f,%c,%2d%2d%2d.%3d,%c,%c*",
+                                                   achMsgId,
+                                                   &(pstInfo->m_dLatitude),
+                                                   &chNorS,
+                                                   &(pstInfo->m_dLongitude),
+                                                   &chEorW,
+                                                   &(pstInfo->m_stUtcTime.m_iHour),
+                                                   &(pstInfo->m_stUtcTime.m_iMinute),
+                                                   &(pstInfo->m_stUtcTime.m_iSecond),
+                                                   &(pstInfo->m_stUtcTime.m_iMilliSecond),
+                                                   &(pstInfo->m_chStatus),
+                                                   &(pstInfo->m_chMode)))
+        {
+            eResult = ERROR;
+        }
+        else
+        {
+            if (achMsgId [2] != 'G' || achMsgId [3] != 'L' || achMsgId [4] != 'L')
+            {
+                eResult = ERROR;
+            }
+            else
+            {
+                /* Original Latitude format is "ddmm.mmmm", then translate it *
+                 * to value in degree.                                        */
+                iDegree = (int) (pstInfo->m_dLatitude) / 100;
+                dMinute = pstInfo->m_dLatitude - iDegree * 100;
+                pstInfo->m_dLatitude = (double) iDegree + dMinute / 60.0;
+                
+                /* If chNorS == 'S', Latitude is negative.                      */                
+                if (chNorS == 'S')
+                {
+                    pstInfo->m_dLatitude = - pstInfo->m_dLatitude;
+                }
+                /* If chNorS == 'N', Latitude is positive. Or error occurred.   */
+                else if (chNorS != 'N')
+                {
+                    eResult = ERROR;
+                    return eResult;
+                }
+                
+                /* Original Longitude format is "dddmm.mmmm", then translate it *
+                 * to value in degree.                                          */
+                iDegree = (int) (pstInfo->m_dLongitude) / 100;
+                dMinute = pstInfo->m_dLongitude - iDegree * 100;
+                pstInfo->m_dLongitude = (double) iDegree + dMinute / 60.0;
+                
+                /* If chEorW == 'W', Longitude is negative.                     */
+                if (chEorW == 'W')
+                {
+                    pstInfo->m_dLongitude = - pstInfo->m_dLongitude;
+                }
+                /* If chEorW == 'E', Longitude is positive. Or error occurred.  */
+                else if (chEorW != 'E')
+                {
+                    eResult = ERROR;
+                    return eResult;
+                }
+            }
         }
     }
     

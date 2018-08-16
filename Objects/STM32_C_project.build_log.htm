@@ -17,12 +17,12 @@ Library Manager: ArmAr.exe V5.05 update 2 (build 169)
 Hex Converter:   FromElf.exe V5.05 update 2 (build 169)
 CPU DLL:         SARMCM3.DLL V5.15.0
 Dialog DLL:      DCM.DLL V1.13.2.0
-Target DLL:      Segger\JL2CM3.dll V2.99.15.0
+Target DLL:      CMSIS_AGDI.dll V1.21.12.0
 Dialog DLL:      TCM.DLL V1.14.5.0
  
 <h2>Project:</h2>
 D:\GitHub\STM32\STM32_C_project.uvprojx
-Project File Date:  08/15/2018
+Project File Date:  08/16/2018
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.05 update 2 (build 169)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
@@ -35,23 +35,22 @@ compiling stm32f10x_rcc.c...
 compiling stm32f10x_usart.c...
 compiling misc.c...
 compiling main.c...
-main.c(10): warning:  #550-D: variable "eResult" was set but never used
+main.c(11): warning:  #550-D: variable "eResult" was set but never used
       ErrorStatus eResult;
-main.c: 1 warning, 0 errors
+main.c(12): warning:  #177-D: variable "stNmeaRmcInfo" was declared but never referenced
+      LyzkNmeaRmcInfo stNmeaRmcInfo;
+main.c(13): warning:  #177-D: variable "stNmeaVtgInfo" was declared but never referenced
+      LyzkNmeaVtgInfo stNmeaVtgInfo;
+main.c(14): warning:  #177-D: variable "stNmeaGgaInfo" was declared but never referenced
+      LyzkNmeaGgaInfo stNmeaGgaInfo;
+main.c(15): warning:  #177-D: variable "stNmeaGsaInfo" was declared but never referenced
+      LyzkNmeaGsaInfo stNmeaGsaInfo;
+main.c: 5 warnings, 0 errors
 compiling LyzkUsart.c...
 compiling LyzkNmeaProtocol.c...
-User\src\LyzkNmeaProtocol.c(92): warning:  #177-D: variable "strMsgTmp" was declared but never referenced
-      char strMsgTmp [20]     = {0};
-User\src\LyzkNmeaProtocol.c(93): warning:  #177-D: variable "strFmtTmp" was declared but never referenced
-      char strFmtTmp [10]     = {0};
-User\src\LyzkNmeaProtocol.c(94): warning:  #550-D: variable "i" was set but never used
-      int i;
-User\src\LyzkNmeaProtocol.c(95): warning:  #177-D: variable "pParam" was declared but never referenced
-      void* pParam;
-User\src\LyzkNmeaProtocol.c: 4 warnings, 0 errors
 compiling LyzkTime.c...
 linking...
-Program Size: Code=16358 RO-data=1002 RW-data=20 ZI-data=1636  
+Program Size: Code=14328 RO-data=1060 RW-data=20 ZI-data=1636  
 FromELF: creating hex file...
 ".\Objects\STM32_C_project.axf" - 0 Error(s), 5 Warning(s).
 

@@ -69,7 +69,7 @@ typedef struct
     double      m_dAltitude;        /**< Altitude in meters according to WGS84 ellipsoid                */
     double      m_dGeoSeparation;   /**< Height of Geoid (means sea level) above WGS84 ellipsoid, meter */
     double      m_dDgpsAge;         /**< Age of DGPS data in seconds, empty if DGPS is not used         */
-    int         m_dDgpsSationId;    /**< DGPS station ID number */
+    int         m_iDgpsStationId;   /**< DGPS station ID number */
 } LyzkNmeaGgaInfo;
 
 typedef struct
@@ -78,7 +78,7 @@ typedef struct
                                              * M - Manual, forced to switch 2D/3D mode*
                                              * A - Allowed to automatically switch 2D/3D mode */
     int         m_iFixType;                 /**< 1 - No fix; 2 - 2D fix; 3 - 3D fix */
-    int         m_aStaUsed[NMEA_MAXSAT];    /**< Satellite used in channel i */
+    int         m_aiStaUsed[NMEA_MAXSAT];   /**< Satellite used in channel i */
     double      m_dPdop;                    /**< Position dilution of precision */
     double      m_dHdop;                    /**< Horizontal dilution of precision */
     double      m_dVdop;                    /**< Vertical dilution of precision */
@@ -100,6 +100,17 @@ typedef struct
     int         m_iSatInView;       /**< Total satellites in view   */
     LyzkNmeaSatelliteInfo   m_stSatInfo [NMEA_SATINPACK];   /**< Satellite information  */
 } LyzkNmeaGsvInfo;
+
+typedef struct
+{
+    double      m_dLatitude;        /**< Latitude */
+    double      m_dLongitude;       /**< Longitude */
+    LyzkTime    m_stUtcTime;        /**< UTC Time */
+    char        m_chStatus;         /**< Data Valid. 'V' - Invalid; 'A' - Valid */
+    char        m_chMode;           /**< Positioning Mode, 'N' - No fix,    *
+                                     *   'A' - Autonomous GNSS fix          *
+                                     *   'D' - Differential GNSS fix        */
+} LyzkNmeaGllInfo;
  
 #ifdef __cplusplus
 extern "c" {
@@ -107,31 +118,34 @@ extern "c" {
 
 /* Get information from RMC sentence. RMC - Recommended Minimum Position Data *
  * (including position, velocity and time).                                   */
-//ErrorStatus LyzkGetInfoFromRmcSentence (char* strMsg, LyzkTime* pstTime, LyzkDate* pstDate,
-//                                        double* pdLatitude, double* pdLongitude, 
-//                                        double* pdSpeed, double* pdCourse, 
-//                                        double* pdMagnVari, char* pchMode);
-ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, LyzkNmeaRmcInfo* pstInfo);
+ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, 
+                                            const int iMsgSize, 
+                                            LyzkNmeaRmcInfo* pstInfo);
 
 /* Get information from VTG sentence. VTG - Track Made Good and Ground Speed. */
-ErrorStatus LyzkGetInfoFromVtgSentence (char* strMsg, double* pdCourse, double* pdCourseMagn,
-										double* pdSpeedInKnots, double* pdSpeedInKmPerHour,
-									    char* pchMode);
+ErrorStatus LyzkGetInfoFromNmeaVtgSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaVtgInfo* pstInfo);
 
 /* Get information from GGA sentence. GGA - Global Position System Fix Data,  *
  * the essential fix data which provides 3D location and accuracy data.       */
-ErrorStatus LyzkGetInfoFromGgaSentence (char* strMsg, LyzkTime* pstTime,
-                                        double* pdLatitude, double* pdLongitude,
-                                        char* pchMode, int* piNumOfSatellitesUsed, 
-                                        double* pdHdop, double* pdAltitude, 
-                                        double* pdGeoidSeparation, int* piAgeOfDgps,
-                                        int* piStationIdOfDgps);
+ErrorStatus LyzkGetInfoFromNmeaGgaSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGgaInfo* pstInfo);
+
+ErrorStatus LyzkGetInfoFromNmeaGsaSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGsaInfo* pstInfo);
+                                        
+ErrorStatus LyzkGetInfoFromNmeaGsvSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGsvInfo* pstInfo);
 
 /* Get information from GLL sentence. GLL - Geographic Latitude and Longitude,*
  * which contains position information, time of position fix and status.      */
-ErrorStatus LyzkGetInfoFromGllSentence (char* strMsg, LyzkTime* pstTime,
-                                        double* pdLatitude, double* pdLongitude,
-                                        char* pchMode);
+ErrorStatus LyzkGetInfoFromNmeaGllSentence (const char* strMsg,
+                                        const int iMsgSize,
+                                        LyzkNmeaGllInfo* pstInfo);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

@@ -35,24 +35,28 @@ compiling stm32f10x_rcc.c...
 compiling stm32f10x_usart.c...
 compiling misc.c...
 compiling main.c...
-main.c(11): warning:  #550-D: variable "eResult" was set but never used
+main.c(71): warning:  #111-D: statement is unreachable
+      return 0;
+main.c(19): warning:  #550-D: variable "eResult" was set but never used
       ErrorStatus eResult;
-main.c(12): warning:  #177-D: variable "stNmeaRmcInfo" was declared but never referenced
+main.c(20): warning:  #177-D: variable "stNmeaRmcInfo" was declared but never referenced
       LyzkNmeaRmcInfo stNmeaRmcInfo;
-main.c(13): warning:  #177-D: variable "stNmeaVtgInfo" was declared but never referenced
+main.c(21): warning:  #177-D: variable "stNmeaVtgInfo" was declared but never referenced
       LyzkNmeaVtgInfo stNmeaVtgInfo;
-main.c(14): warning:  #177-D: variable "stNmeaGgaInfo" was declared but never referenced
+main.c(22): warning:  #177-D: variable "stNmeaGgaInfo" was declared but never referenced
       LyzkNmeaGgaInfo stNmeaGgaInfo;
-main.c(15): warning:  #177-D: variable "stNmeaGsaInfo" was declared but never referenced
+main.c(23): warning:  #177-D: variable "stNmeaGsaInfo" was declared but never referenced
       LyzkNmeaGsaInfo stNmeaGsaInfo;
-main.c: 5 warnings, 0 errors
+main.c(87): warning:  #177-D: variable "chRecv" was declared but never referenced
+      uint8_t chRecv;
+main.c: 7 warnings, 0 errors
 compiling LyzkUsart.c...
 compiling LyzkNmeaProtocol.c...
 compiling LyzkTime.c...
 linking...
-Program Size: Code=14328 RO-data=1060 RW-data=20 ZI-data=1636  
+Program Size: Code=14508 RO-data=1060 RW-data=28 ZI-data=3636  
 FromELF: creating hex file...
-".\Objects\STM32_C_project.axf" - 0 Error(s), 5 Warning(s).
+".\Objects\STM32_C_project.axf" - 0 Error(s), 7 Warning(s).
 
 <h2>Collection of Component include folders:</h2>
   D:\GitHub\STM32\RTE

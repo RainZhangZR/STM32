@@ -6,6 +6,7 @@
 #include "stdio.h"
 #include "stdarg.h"
 #include "ctype.h"
+#include "stdbool.h"
 
 #define NMEA_MAX_TEMP_STRING_LENGTH 50
 
@@ -14,65 +15,52 @@
 #define NMEA_TOKS_WIDTH     (3)
 #define NMEA_TOKS_TYPE      (4)
 
-uint32_t LyzkStrToHex (char* str)
-{
-    /* The result converted from string */
-    uint32_t uiResult = 0;
-    
-    while ('0' > *str || ('9' < *str && *str < 'A') 
-        || ('F' < *str && *str < 'a') || *str > 'f' )
-    {
-        str++;
-    }
-    
-    if (*str == '0' && (*(str + 1) == 'x' || * (str + 1) == 'X'))
-    {
-        str += 2;
-    }
-    
-    while (('0' <= *str && *str <= '9') || ('a' <= *str && *str >= 'f')
-        || ('A' <= *str && *str <= 'F'))
-    {
-        uiResult *= 16;
-        
-        if ('0' <= *str && *str <= '9')
-        {
-            uiResult += *str - '0';
-        }
-        else if ('a' <= *str && *str >= 'f')
-        {
-            uiResult += (*str - 'a') + 10;
-        }
-        else if ('A' <= *str && *str <= 'F')
-        {
-            uiResult += (*str - 'A') + 10;
-        }
-        
-        str++;
-    }
-    
-    return uiResult;
-}
-
-ErrorStatus LyzkNmeaCheckSum (const char* strMsg)
+ErrorStatus LyzkNmeaCheckSum (const char* strMsg, const int iLength)
 {
     ErrorStatus eResult = ERROR;
-    char chSumCalc; /* Check sum calculated */
-    char chSumGet;  /* Check sum get from the message to check */
+    char chSumCalc;     /* Check sum calculated */
+    char chSumGet;      /* Check sum get from the message to check */
     char strSumGet [3]; /*The string form of check sum get from the message to check */
+    char* pchTmp;
+    int i;
+    bool bDollor = false;   /* If sentence include '$' character */
+    bool bStar   = false;   /* If sentence include '*' character */
+    bool bIntegrity = false;/* If sentence is integrity and its format is correct */
+    
+    /* Check the integrity of NMEA sentence */
+    for (i = 0; i < iLength; i++)
+    {
+        if ('$' == strMsg [i])
+        {
+            bDollor = true;
+        }
+        
+        if (bDollor && ('*' == strMsg [i]))
+        {
+            if (i < iLength - 2)
+            {
+                bStar = true;
+            }
+        }
+    }
+    
+    if (bDollor && bStar)
+    {
+        bIntegrity = true;
+    }
     
     /* Find the header of '$' */
-    while (*strMsg != '$')
+    while ((*strMsg != '$') && bIntegrity)
     {
         strMsg++;
     }
     
     /* Calcuate check sum of the message to check */
-    if (*strMsg == '$')
+    if ((*strMsg == '$') && bIntegrity)
     {
         chSumCalc = 0;
         strMsg++;
-        while (*strMsg != '*')
+        while ((*strMsg != '*') && bIntegrity)
         {
             chSumCalc ^= *strMsg;
             strMsg++;
@@ -81,7 +69,7 @@ ErrorStatus LyzkNmeaCheckSum (const char* strMsg)
         strSumGet [0]   = *(++strMsg);
         strSumGet [1]   = *(++strMsg);
         strSumGet [2]   = 0;
-        chSumGet = (char) LyzkStrToHex (strSumGet);
+        chSumGet = (char) strtol (strSumGet, &(pchTmp), 16);
         
         if (chSumCalc == chSumGet)
         {
@@ -92,9 +80,9 @@ ErrorStatus LyzkNmeaCheckSum (const char* strMsg)
     return eResult;
 }
 
-int LyzkNmeaScanf (const char* strMsg, const int iMsgSize, const char* strFmt, ...)
+int LyzkNmeaScanf (const char* strMsg, const int iMsgLength, const char* strFmt, ...)
 {
-    const char* pchMsgEnd   = strMsg + iMsgSize;
+    const char* pchMsgEnd   = strMsg + iMsgLength;
     int iArgCnt             = 0;        /* Arguments that converted */
     char strMsgTmp [NMEA_MAX_TEMP_STRING_LENGTH]     = {0};
     char strFmtTmp [NMEA_MAX_TEMP_STRING_LENGTH]     = {0};
@@ -285,8 +273,55 @@ FAIL:
     return iArgCnt;
 }
 
+LyzkNmeaSentenceType LyzkDecideNmeaSentenceType (const char* strMsg, const int iLength)
+{
+    LyzkNmeaSentenceType eType = NMEA_NON;    
+    char achMsgId [6] = {0};
+    
+    while ('$' != *strMsg)
+    {
+        strMsg++;
+    }
+    
+    if ('$' == *strMsg)
+    {
+        memcpy (achMsgId, ++strMsg, 5);
+    }
+    
+    if (0 == strcmp (achMsgId + 2, "RMC"))
+    {
+        eType = NMEA_RMC;
+    }
+    else if (0 == strcmp (achMsgId + 2, "VTG"))
+    {
+        eType = NMEA_VTG;
+    }
+    else if (0 == strcmp (achMsgId + 2, "GGA"))
+    {
+        eType = NMEA_GGA;
+    }
+    else if (0 == strcmp (achMsgId + 2, "GSA"))
+    {
+        eType = NMEA_GSA;
+    }
+    else if (0 == strcmp (achMsgId + 2, "GSV"))
+    {
+        eType = NMEA_GSV;
+    }
+    else if (0 == strcmp (achMsgId + 2, "GLL"))
+    {
+        eType = NMEA_GLL;
+    }
+    else
+    {
+        eType = NMEA_NON;
+    }
+    
+    return eType;
+}
+
 ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, 
-                                            const int iMsgSize, 
+                                            const int iMsgLength, 
                                             LyzkNmeaRmcInfo* pstInfo)
 {
     char chEorW;                /* East or West */
@@ -296,7 +331,7 @@ ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg,
     int  iDegree;
     double dMinute;
     
-    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg, iMsgLength);
     
     if (eResult == SUCCESS)
     {
@@ -305,28 +340,28 @@ ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg,
         {
             strMsg++;
         }
-        /* --------------------------------------- RMC Sentence format ---------------------------------------- */
-        /*                                          $                                                           *
-         *                                          |Message Id                                                 *
-         *                                          |  | Hour                                                   *
-         *                                          |  |   |Minute                                              *
-         *                                          |  |   |  |Second                                           *
-         *                                          |  |   |  |  | MilliSecond                                  *
-         *                                          |  |   |  |  |   |Data Valid                                *
-         *                                          |  |   |  |  |   |  |Latitude                               *
-         *                                          |  |   |  |  |   |  |  | NorS                               *
-         *                                          |  |   |  |  |   |  |  |  |Longitude                        *
-         *                                          |  |   |  |  |   |  |  |  |  | EorW                         *
-         *                                          |  |   |  |  |   |  |  |  |  |  |Speed                      *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |Course over ground      *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  Day                *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |Month            *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |Year          *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |Magn Vari  *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  | EorW   *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  |  |PMode*
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  |  |  |  */
-        if (18 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%2d%2d%2d.%3d,%c,%f,%c,%f,%c,%f,%f,%2d%2d%2d,%f,%c,%c*",
+        /* ---------------------------------------- RMC Sentence format ----------------------------------------- */
+        /*                                            $                                                           *
+         *                                            |Message Id                                                 *
+         *                                            |  | Hour                                                   *
+         *                                            |  |   |Minute                                              *
+         *                                            |  |   |  |Second                                           *
+         *                                            |  |   |  |  | MilliSecond                                  *
+         *                                            |  |   |  |  |   |Data Valid                                *
+         *                                            |  |   |  |  |   |  |Latitude                               *
+         *                                            |  |   |  |  |   |  |  | NorS                               *
+         *                                            |  |   |  |  |   |  |  |  |Longitude                        *
+         *                                            |  |   |  |  |   |  |  |  |  | EorW                         *
+         *                                            |  |   |  |  |   |  |  |  |  |  |Speed                      *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |Course over ground      *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |  Day                *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |   |Month            *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |   |  |Year          *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |Magn Vari  *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  | EorW   *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  |  |PMode*
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |   |  |  |  |  |  |  */
+        if (18 != LyzkNmeaScanf (strMsg, iMsgLength, "$%5s,%2d%2d%2d.%3d,%c,%f,%c,%f,%c,%f,%f,%2d%2d%2d,%f,%c,%c*",
                                                    achMsgId, 
                                                    &(pstInfo->m_stUtcTime.m_iHour), 
                                                    &(pstInfo->m_stUtcTime.m_iMinute),
@@ -411,12 +446,12 @@ ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg,
 }
 
 ErrorStatus LyzkGetInfoFromNmeaVtgSentence (const char* strMsg,
-                                        const int iMsgSize,
-                                        LyzkNmeaVtgInfo* pstInfo)
+                                            const int iMsgLength,
+                                            LyzkNmeaVtgInfo* pstInfo)
 {
     char achMsgId [6] = {0};    /* Message ID */
     
-	ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+	ErrorStatus eResult = LyzkNmeaCheckSum (strMsg, iMsgLength);
     
     if (SUCCESS == eResult)
     {
@@ -426,16 +461,16 @@ ErrorStatus LyzkGetInfoFromNmeaVtgSentence (const char* strMsg,
             strMsg++;
         }
         
-        /* ----------------------------- VTG Sentence Format ------------------------------ */
-        /*                                         $                                        *
-         *                                         |MsgID                                   *
-         *                                         |  |COS(T)                               *
-         *                                         |  |  |  COS(M)                          *
-         *                                         |  |  |    |SpeedInKnots                 *
-         *                                         |  |  |    |    |SpeedInKm/h             *
-         *                                         |  |  |    |    |    |Positioning Mode   *
-         *                                         |  |  |    |    |    |    |              */
-        if (6 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%f,T,%f,M,%f,N,%f,K,%c*",
+        /* ------------------------------ VTG Sentence Format ------------------------------- */
+        /*                                           $                                        *
+         *                                           |MsgID                                   *
+         *                                           |  |COS(T)                               *
+         *                                           |  |  |  COS(M)                          *
+         *                                           |  |  |    |SpeedInKnots                 *
+         *                                           |  |  |    |    |SpeedInKm/h             *
+         *                                           |  |  |    |    |    |Positioning Mode   *
+         *                                           |  |  |    |    |    |    |              */
+        if (6 != LyzkNmeaScanf (strMsg, iMsgLength, "$%5s,%f,T,%f,M,%f,N,%f,K,%c*",
                                                   achMsgId,
                                                   &(pstInfo->m_dCourseTrue),
                                                   &(pstInfo->m_dCourseMagn),
@@ -458,8 +493,8 @@ ErrorStatus LyzkGetInfoFromNmeaVtgSentence (const char* strMsg,
 }
 
 ErrorStatus LyzkGetInfoFromNmeaGgaSentence (const char* strMsg,
-                                        const int iMsgSize,
-                                        LyzkNmeaGgaInfo* pstInfo)
+                                            const int iMsgLength,
+                                            LyzkNmeaGgaInfo* pstInfo)
 {
     char chEorW;                /* East or West */
     char chNorS;                /* North or South */
@@ -467,7 +502,7 @@ ErrorStatus LyzkGetInfoFromNmeaGgaSentence (const char* strMsg,
     int  iDegree;
     double dMinute;
     
-    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg, iMsgLength);
     
     if (SUCCESS == eResult)
     {
@@ -477,27 +512,27 @@ ErrorStatus LyzkGetInfoFromNmeaGgaSentence (const char* strMsg,
             strMsg++;
         }
         
-        /* --------------------------------------- GGA Sentence Format ---------------------------------------- */
-        /*                                          $                                                           *
-         *                                          |MsgId                                                      *
-         *                                          |  | Hour                                                   *
-         *                                          |  |   |Minute                                              *
-         *                                          |  |   |  |Second                                           *
-         *                                          |  |   |  |  |MilliSecond                                   *
-         *                                          |  |   |  |  |   |Latitude                                  *
-         *                                          |  |   |  |  |   |  |NorS                                   *
-         *                                          |  |   |  |  |   |  |  |Longitude                           *
-         *                                          |  |   |  |  |   |  |  |  |EorW                             *
-         *                                          |  |   |  |  |   |  |  |  |  |FixStatus                     *
-         *                                          |  |   |  |  |   |  |  |  |  |  |NumOfSV                    *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |HDOP                    *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |Altitude             *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |GeoidSeparation   *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |    | DGPS Age    *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |    |    |DGPS Station ID *
-         *                                          |  |   |  |  |   |  |  |  |  |  |  |  |  |    |    |  |     */
-        if (16 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%2d%2d%2d.%3d,%f,%c,%f,%c,%d,%d,%f,%f,M,%f,M,%f,%d*",
-                                                   achMsgId,
+        /* ---------------------------------------- GGA Sentence Format ----------------------------------------- */
+        /*                                            $                                                           *
+         *                                            |MsgId                                                      *
+         *                                            |  | Hour                                                   *
+         *                                            |  |   |Minute                                              *
+         *                                            |  |   |  |Second                                           *
+         *                                            |  |   |  |  |MilliSecond                                   *
+         *                                            |  |   |  |  |   |Latitude                                  *
+         *                                            |  |   |  |  |   |  |NorS                                   *
+         *                                            |  |   |  |  |   |  |  |Longitude                           *
+         *                                            |  |   |  |  |   |  |  |  |EorW                             *
+         *                                            |  |   |  |  |   |  |  |  |  |FixStatus                     *
+         *                                            |  |   |  |  |   |  |  |  |  |  |NumOfSV                    *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |HDOP                    *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |Altitude             *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |  |GeoidSeparation   *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |  |    | DGPS Age    *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |  |    |    |DGPS Station ID *
+         *                                            |  |   |  |  |   |  |  |  |  |  |  |  |  |    |    |  |     */
+        if (16 != LyzkNmeaScanf (strMsg, iMsgLength, "$%5s,%2d%2d%2d.%3d,%f,%c,%f,%c,%d,%d,%f,%f,M,%f,M,%f,%d*",
+                                                     achMsgId,
                                                    &(pstInfo->m_stUtcTime.m_iHour),
                                                    &(pstInfo->m_stUtcTime.m_iMinute),
                                                    &(pstInfo->m_stUtcTime.m_iSecond),
@@ -567,12 +602,12 @@ ErrorStatus LyzkGetInfoFromNmeaGgaSentence (const char* strMsg,
 }
 
 ErrorStatus LyzkGetInfoFromNmeaGsaSentence (const char* strMsg,
-                                        const int iMsgSize,
-                                        LyzkNmeaGsaInfo* pstInfo)
+                                            const int iMsgLength,
+                                            LyzkNmeaGsaInfo* pstInfo)
 {
     char achMsgId [6] = {0};    /* Message ID */
     
-    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg, iMsgLength);
     
     if (SUCCESS == eResult)
     {
@@ -582,28 +617,28 @@ ErrorStatus LyzkGetInfoFromNmeaGsaSentence (const char* strMsg,
             strMsg++;
         }
         
-        /* ------------------------------------- GSA Sentence Format -------------------------------------- */
-        /*                                          $                                                       *
-         *                                          |MsgId                                                  *
-         *                                          |  |Mode                                                *
-         *                                          |  |  |Fix Statuse                                      *
-         *                                          |  |  |  |SatInCh1                                      *
-         *                                          |  |  |  |  |SatInCh2                                   *
-         *                                          |  |  |  |  |  |SatInCh3                                *
-         *                                          |  |  |  |  |  |  |SatInCh4                             *
-         *                                          |  |  |  |  |  |  |  |SatInCh5                          *
-         *                                          |  |  |  |  |  |  |  |  |SatInCh6                       *
-         *                                          |  |  |  |  |  |  |  |  |  |SatInCh7                    *
-         *                                          |  |  |  |  |  |  |  |  |  |  |SatInCh8                 *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |SatInCh9              *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh10          *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh11       *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh12    *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |PDOP      *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |HDOP   *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | VDOP *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | */
-        if (18 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%c,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f*",
+        /* -------------------------------------- GSA Sentence Format --------------------------------------- */
+        /*                                            $                                                       *
+         *                                            |MsgId                                                  *
+         *                                            |  |Mode                                                *
+         *                                            |  |  |Fix Statuse                                      *
+         *                                            |  |  |  |SatInCh1                                      *
+         *                                            |  |  |  |  |SatInCh2                                   *
+         *                                            |  |  |  |  |  |SatInCh3                                *
+         *                                            |  |  |  |  |  |  |SatInCh4                             *
+         *                                            |  |  |  |  |  |  |  |SatInCh5                          *
+         *                                            |  |  |  |  |  |  |  |  |SatInCh6                       *
+         *                                            |  |  |  |  |  |  |  |  |  |SatInCh7                    *
+         *                                            |  |  |  |  |  |  |  |  |  |  |SatInCh8                 *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |SatInCh9              *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh10          *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh11       *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SatInCh12    *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |PDOP      *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |HDOP   *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | VDOP *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | */
+        if (18 != LyzkNmeaScanf (strMsg, iMsgLength, "$%5s,%c,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%f,%f,%f*",
                                                    achMsgId,
                                                    &(pstInfo->m_chFixMode),
                                                    &(pstInfo->m_iFixType),
@@ -638,11 +673,11 @@ ErrorStatus LyzkGetInfoFromNmeaGsaSentence (const char* strMsg,
 }
 
 ErrorStatus LyzkGetInfoFromNmeaGsvSentence (const char* strMsg,
-                                        const int iMsgSize,
-                                        LyzkNmeaGsvInfo* pstInfo)
+                                            const int iMsgLength,
+                                            LyzkNmeaGsvInfo* pstInfo)
 {
     char achMsgId [6] = {0};    /* Message ID */
-    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg, iMsgLength);
     
     if (SUCCESS == eResult)
     {
@@ -652,30 +687,30 @@ ErrorStatus LyzkGetInfoFromNmeaGsvSentence (const char* strMsg,
             strMsg++;
         }
         
-        /* ----------------------------------------- GSV Sentence Format ------------------------------------------ */
-        /*                                          $                                                               *
-         *                                          |MsgId                                                          *
-         *                                          |  |Msgs                                                        *
-         *                                          |  |  | SN                                                      *
-         *                                          |  |  |  |SatInView                                             *
-         *                                          |  |  |  |  |SatId1                                             *
-         *                                          |  |  |  |  |  |Elev1                                           *
-         *                                          |  |  |  |  |  |  |Azi1                                         *
-         *                                          |  |  |  |  |  |  |  |SNR1                                      *
-         *                                          |  |  |  |  |  |  |  |  |SatId2                                 *
-         *                                          |  |  |  |  |  |  |  |  |  |Elev2                               *
-         *                                          |  |  |  |  |  |  |  |  |  |  |Azi2                             *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |SNR2                          *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |SatId3                     *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |Elev3                   *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Azi3                 *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SNR3              *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SatId4         *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Elev4       *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Azi4     *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SNR4  *
-         *                                          |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |   */
-        if (20 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%d,%d,%d,%d,%f,%f,%f,%d,%f,%f,%f,%d,%f,%f,%f,%d,%f,%f,%f*",
+        /* ------------------------------------------ GSV Sentence Format ------------------------------------------- */
+        /*                                            $                                                               *
+         *                                            |MsgId                                                          *
+         *                                            |  |Msgs                                                        *
+         *                                            |  |  | SN                                                      *
+         *                                            |  |  |  |SatInView                                             *
+         *                                            |  |  |  |  |SatId1                                             *
+         *                                            |  |  |  |  |  |Elev1                                           *
+         *                                            |  |  |  |  |  |  |Azi1                                         *
+         *                                            |  |  |  |  |  |  |  |SNR1                                      *
+         *                                            |  |  |  |  |  |  |  |  |SatId2                                 *
+         *                                            |  |  |  |  |  |  |  |  |  |Elev2                               *
+         *                                            |  |  |  |  |  |  |  |  |  |  |Azi2                             *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |SNR2                          *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |SatId3                     *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |Elev3                   *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Azi3                 *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SNR3              *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SatId4         *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Elev4       *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |Azi4     *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |SNR4  *
+         *                                            |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |   */
+        if (20 != LyzkNmeaScanf (strMsg, iMsgLength, "$%5s,%d,%d,%d,%d,%f,%f,%f,%d,%f,%f,%f,%d,%f,%f,%f,%d,%f,%f,%f*",
                                                    achMsgId,
                                                    &(pstInfo->m_iNumOfMsg),
                                                    &(pstInfo->m_iSeqNum),
@@ -712,8 +747,8 @@ ErrorStatus LyzkGetInfoFromNmeaGsvSentence (const char* strMsg,
 }
 
 ErrorStatus LyzkGetInfoFromNmeaGllSentence (const char* strMsg,
-                                        const int iMsgSize,
-                                        LyzkNmeaGllInfo* pstInfo)
+                                            const int iMsgLength,
+                                            LyzkNmeaGllInfo* pstInfo)
 {
     char chEorW;
     char chNorS;
@@ -721,7 +756,7 @@ ErrorStatus LyzkGetInfoFromNmeaGllSentence (const char* strMsg,
     int iDegree;
     double dMinute;
     
-    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg);
+    ErrorStatus eResult = LyzkNmeaCheckSum (strMsg, iMsgLength);
     
     if (SUCCESS == eResult)
     {
@@ -731,8 +766,8 @@ ErrorStatus LyzkGetInfoFromNmeaGllSentence (const char* strMsg,
             strMsg++;
         }
         
-        if (11 != LyzkNmeaScanf (strMsg, iMsgSize, "$%5s,%f,%c,%f,%c,%2d%2d%2d.%3d,%c,%c*",
-                                                   achMsgId,
+        if (11 != LyzkNmeaScanf (strMsg, iMsgLength, "$%5s,%f,%c,%f,%c,%2d%2d%2d.%3d,%c,%c*",
+                                                    achMsgId,
                                                    &(pstInfo->m_dLatitude),
                                                    &chNorS,
                                                    &(pstInfo->m_dLongitude),

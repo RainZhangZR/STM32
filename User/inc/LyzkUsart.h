@@ -45,7 +45,7 @@ void LyzkUsartPutChar (USART_TypeDef* pUSARTx, const uint8_t ch);
 uint8_t LyzkUsartGetChar (USART_TypeDef* pUSARTx);
 
 int LyzkUsartSendPackage (USART_TypeDef* pUSARTx, uint8_t* pbySend, const int iSize);
-int LyzkUsartFprint (USART_TypeDef* pUSARTx, char* strFmt, ...);
+int LyzkUsartPrintf (USART_TypeDef* pUSARTx, char* strFmt, ...);
 
 #ifdef __cplusplus
 }

@@ -30,17 +30,6 @@
 #define NMEA_MAXSAT     12
 #define NMEA_SATINPACK  4
 
-typedef enum
-{
-    NMEA_NON,       /* Not to be NMEA sentence */
-    NMEA_RMC,       /* NMEA RMC sentence */
-    NMEA_VTG,       /* NMEA VTG sentence */
-    NMEA_GGA,       /* NMEA GGA sentence */
-    NMEA_GSA,       /* NMEA GSA sentence */
-    NMEA_GSV,       /* NMEA GSV sentence */
-    NMEA_GLL        /* NMEA GLL sentence */
-} LyzkNmeaSentenceType;
-
 typedef struct
 {
     LyzkTime    m_stUtcTime;        /**< UTC of position*/
@@ -127,39 +116,36 @@ typedef struct
 extern "c" {
 #endif /* __cplusplus */
 
-/* Decide the NMEA sentence type */
-LyzkNmeaSentenceType LyzkDecideNmeaSentenceType (const char* strMsg, const int iLength);
-
 /* Get information from RMC sentence. RMC - Recommended Minimum Position Data *
  * (including position, velocity and time).                                   */
 ErrorStatus LyzkGetInfoFromNmeaRmcSentence (const char* strMsg, 
-                                            const int iMsgLength, 
+                                            const int iMsgSize, 
                                             LyzkNmeaRmcInfo* pstInfo);
 
 /* Get information from VTG sentence. VTG - Track Made Good and Ground Speed. */
 ErrorStatus LyzkGetInfoFromNmeaVtgSentence (const char* strMsg,
-                                            const int iMsgLength,
-                                            LyzkNmeaVtgInfo* pstInfo);
+                                        const int iMsgSize,
+                                        LyzkNmeaVtgInfo* pstInfo);
 
 /* Get information from GGA sentence. GGA - Global Position System Fix Data,  *
  * the essential fix data which provides 3D location and accuracy data.       */
 ErrorStatus LyzkGetInfoFromNmeaGgaSentence (const char* strMsg,
-                                            const int iMsgLength,
-                                            LyzkNmeaGgaInfo* pstInfo);
+                                        const int iMsgSize,
+                                        LyzkNmeaGgaInfo* pstInfo);
 
 ErrorStatus LyzkGetInfoFromNmeaGsaSentence (const char* strMsg,
-                                            const int iMsgLength,
-                                            LyzkNmeaGsaInfo* pstInfo);
+                                        const int iMsgSize,
+                                        LyzkNmeaGsaInfo* pstInfo);
                                         
 ErrorStatus LyzkGetInfoFromNmeaGsvSentence (const char* strMsg,
-                                            const int iMsgLength,
-                                            LyzkNmeaGsvInfo* pstInfo);
+                                        const int iMsgSize,
+                                        LyzkNmeaGsvInfo* pstInfo);
 
 /* Get information from GLL sentence. GLL - Geographic Latitude and Longitude,*
  * which contains position information, time of position fix and status.      */
 ErrorStatus LyzkGetInfoFromNmeaGllSentence (const char* strMsg,
-                                            const int iMsgLength,
-                                            LyzkNmeaGllInfo* pstInfo);
+                                        const int iMsgSize,
+                                        LyzkNmeaGllInfo* pstInfo);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

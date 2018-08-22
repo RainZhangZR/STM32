@@ -107,7 +107,7 @@ void LyzkUsartInit (USART_TypeDef* pUSARTx, USART_InitTypeDef* pstInit)
     USART_Cmd (pUSARTx, ENABLE);
 }
 
-void LyzkUsartItCfg (USART_TypeDef* pUSARTx, const uint8_t byIt, 
+void LyzkUsartItCfg (USART_TypeDef* pUSARTx, const uint8_t usIt, 
                      const uint32_t wPrioGrp, const uint8_t byPrePrio, 
                      const uint8_t bySubPrio)
 {
@@ -148,35 +148,35 @@ void LyzkUsartItCfg (USART_TypeDef* pUSARTx, const uint8_t byIt,
     NVIC_Init (&stInit);
     
     /* Enable the interrupt */
-    if (byIt & LYZK_USART_IT_TXE)
+    if (usIt & LYZK_USART_IT_TXE)
     {
         USART_ITConfig (pUSARTx, USART_IT_TXE, ENABLE);
     }
-    if (byIt & LYZK_USART_IT_TC)
+    if (usIt & LYZK_USART_IT_TC)
     {
         USART_ITConfig (pUSARTx, USART_IT_TC, ENABLE);
     }
-    if (byIt & LYZK_USART_IT_RXNE)
+    if (usIt & LYZK_USART_IT_RXNE)
     {
         USART_ITConfig (pUSARTx, USART_IT_RXNE, ENABLE);
     }
-    if (byIt & LYZK_USART_IT_IDLE)
+    if (usIt & LYZK_USART_IT_IDLE)
     {
         USART_ITConfig (pUSARTx, USART_IT_IDLE, ENABLE);
     }
-    if (byIt & LYZK_USART_IT_CTS)
+    if (usIt & LYZK_USART_IT_CTS)
     {
         USART_ITConfig (pUSARTx, USART_IT_CTS, ENABLE);
     }
-    if (byIt & LYZK_USART_IT_LBD)
+    if (usIt & LYZK_USART_IT_LBD)
     {
         USART_ITConfig (pUSARTx, USART_IT_LBD, ENABLE);
     }
-    if (byIt & LYZK_USART_IT_PE)
+    if (usIt & LYZK_USART_IT_PE)
     {
         USART_ITConfig (pUSARTx, USART_IT_PE, ENABLE);
     }
-    if (byIt & LYZK_USART_IT_ERR)
+    if (usIt & LYZK_USART_IT_ERR)
     {
         USART_ITConfig (pUSARTx, USART_IT_ERR, ENABLE);
     }
@@ -219,7 +219,7 @@ int LyzkUsartSendPackage (USART_TypeDef* pUSARTx, uint8_t* pbySend, const int iS
     return iCnt;
 }
 
-int LyzkUsartPrintf (USART_TypeDef* pUSARTx, char* strFmt, ...)
+int LyzkUsartFprint (USART_TypeDef* pUSARTx, char* strFmt, ...)
 {
     #define print_ch(ch) LyzkUsartPutChar (pUSARTx, ch);
     #define MAX_BUFFER_SIZE 509
